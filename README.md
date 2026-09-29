@@ -1,112 +1,33 @@
-# Hive Warehouse Patterns Lab (Partitions & SerDe)
+# Partition Autopsy: Telecom CDR Small Files
 
-**Author:** [Faiz Elahi](https://github.com/faizilahi) (`faizilahi`) · **Type:** EDUCATIONAL LAB · **Synthetic data only**
+[Faiz Elahi](https://www.linkedin.com/in/faizilahi) — [pendataco.com](https://pendataco.com) — [github.com/faizilahi](https://github.com/faizilahi)
 
----
+Synthetic data only. No vendor-customer employment claim.
 
-## Educational disclaimer
+A Hive-style CDR landing zone missed market `MKT-NE` on `2024-11-03` after a failed
+`MSCK REPAIR` left the metastore high-water on `2024-11-02` while 14,200 tiny parquet
+files sat on disk under the skipped partition.
 
-This is an **educational portfolio lab**. Datasets are **synthetic**. It does **not** claim employment at a customer, hospital, bank, SAP shop, or Oracle estate. No real PHI/PII. No live cloud spend. No API keys required.
+## The partition that was skipped
 
----
+`lake/cdr/dt=2024-11-03/market=MKT-NE/` held **48,210** rows. The overnight rollup
+only listed metastore partitions, so NE contributed **0** rows to the AM dashboard.
 
-## Problem statement
+## SerDe note
 
-Legacy lakes still speak Hive: external tables, partition columns, SerDe-shaped CSVs/Parquet, and MSCK-style repair thinking. Students need runnable partition pruning demos without a full Hadoop cluster.
+Metastore DDL still said `LazySimpleSerDe` (CSV) while landings were parquet.
+`src/serde_probe.py` flags `serde_conflict=true` for that path.
 
-**Domain focus:** Retail event warehouse
+## The predicate that saved the scan
 
----
-
-## Why this tool (HiveQL patterns (local parquet partition stand-in))
-
-| Flat CSV dumps | Hive-style partitioned lake |
-|---|---|
-| Full scans | Partition filters on dt/region |
-| Opaque formats | Explicit SerDe/schema notes |
-
----
-
-## Architecture
-
-```mermaid
-flowchart LR
-  GEN[generate_synthetic_data.py]
-  DATA[data/*.csv]
-  RUN[run_lab.py]
-  OUT[output/*.csv]
-  CHART[generate_charts.py]
-  IMG[docs/images/*.png]
-  GEN --> DATA --> RUN --> OUT
-  OUT --> CHART --> IMG
-```
-
-See [`docs/architecture.md`](docs/architecture.md).
-
----
-
-## Dataset dictionary
-
-| Path | Grain | Notes |
-|------|-------|-------|
-| `data/events_raw.csv` | Event | Landing extract |
-| `lake/events/dt=*/region=*/*.parquet` | Event | External-table style partitions |
-| `output/partition_prune.csv` | Partition | Rows scanned teaching metric |
-
----
-
-## Prerequisites
-
-- Python 3.10+
-- Packages in `requirements.txt`
-
----
-
-## How to run
+Predicate `market='MKT-NE' AND dt='2024-11-03'` cut the file list from the full-day
+scan to the NE shard only; coalesce rewrote **14,200** files down to **24**.
 
 ```powershell
-cd "hive-warehouse-patterns-lab-"
-python -m venv .venv
-.\\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python scripts/generate_synthetic_data.py
-python src/run_lab.py
-python scripts/generate_charts.py
+python src/run_autopsy.py
 ```
 
-Inspect `output/summary.csv` and `docs/images/primary_metric.png`.
-
----
-
-## Local vs cloud (honest)
-
-**No Hadoop/Hive metastore.** Python + pandas/pyarrow write Hive-style `dt=.../region=...` folders and query them with DuckDB `hive_partitioning=true`. Honest stand-in for HiveQL habits.
-
----
-
-## Results interpretation
-
-Open `output/` CSVs and the PNGs under `docs/images/`. Numbers are synthetic teaching fixtures — use them to explain grain, filters, and control totals, not as real business KPIs.
-
----
-
-## Limitations
-
-- Stand-in engines (DuckDB/SQLite/pandas) replace paid MPP/warehouses where noted.
-- Simplified schemas vs production SAP/Oracle/Hive estates.
-- Charts are matplotlib teaching visuals, not vendor BI embeds.
-
----
-
-## Exercises
-
-1. Add a `channel` partition and show prune stats.
-2. Document a SerDe mapping for a messy CSV.
-3. Simulate a missing partition folder and an MSCK repair checklist.
-
----
-
-## License / attribution
-
-Educational portfolio content by Faiz Elahi. Synthetic data for teaching only.
-
+Worked result: skipped rows **48210**, serde_conflict **true**, files before **14200**,
+after coalesce **24**, predicate scan reduction **~76%**.
